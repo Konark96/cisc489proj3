@@ -33,7 +33,7 @@ to setup
   ;;remove/replace this in the behavior space
   set team1-setup [ [] -> matts-setup]
   set team2-setup [[] -> matts-setup]
-  set team1-move [ []-> matts-move]
+  set team1-move [ []-> team1smove]
   set team2-move [[] -> move]
   ;;replace this in the behavior space
 
@@ -89,12 +89,11 @@ to update
   ask agents [run team-move]
 
   display
-;  plot holes-filled
+  ;  plot holes-filled
   if (holes-born > 0)[
     set score1 holes-filled1 * 100 / holes-born
     set score2 holes-filled2 * 100 / holes-born
     plotxy ticks score1
-assignBlock
   ]
 end
 
@@ -137,15 +136,20 @@ to set-robot-destination [arobot ahole]
   ]
 end
 
-;moves the agent one step with in the absolute heading h.
-;It makes sure that any tile or robot that was in the destination location also moves, and so on recursively.
-;If a tile moves into a hole, both die.
-to move-one [h]
+;; MODIFIED WITH EXTRA PARAMETER TO AVOID INFINITE RECURSION Paul's Version
+
+; Moves the agent one step with in the absolute heading h.
+; It makes sure that any tile or robot that was in the destination location also moves, and so on recursively.
+; If a tile moves into a hole, both die.
+; The depth argument allows the procedure to escape runaway recursion
+to move-one [h depth]
   let oldh heading
   set heading h
   let pushed-agents (turtles-at dx dy) with [(breed = team2s) or (breed = team1s) or (breed = tiles)]
   if (any? pushed-agents) [
-    ask pushed-agents [move-one h]
+    set depth depth + 1
+    if depth > 100 [stop]
+    ask pushed-agents [move-one h depth]
   ]
   if (breed = tiles and (any? holes-at dx dy))[
     ifelse [breed = team1s] of min-one-of (turtles with [(breed = team1s) or (breed = team2s)]) [distance myself]
@@ -161,7 +165,6 @@ to move-one [h]
   fd 1
   set heading oldh
 end
-
 ;robots
 
 ; This is the obvious greedy strategy.
@@ -173,13 +176,13 @@ to move
   let closest-tile min-one-of tiles [distance myself]
   let closest-hole min-one-of holes [distance myself]
   if (closest-tile != nobody)[
-     ifelse (closest-hole != nobody)[
+    ifelse (closest-hole != nobody)[
       ask closest-tile [set-robot-destination myself closest-hole]
       if (distancexy destination-x destination-y < 0.1) [ ;(xcor = destination-x and ycor = destination-y)[
-        ;Im already at the desired location, so push the tile
+                                                          ;Im already at the desired location, so push the tile
 
         set heading rectify-heading towards closest-tile
-        move-one heading
+        move-one heading 0
         stop]]
     [;there are no holes in the field, this typically only happens at the beginning of the run.
       set destination-x [xcor] of closest-tile
@@ -195,56 +198,130 @@ to move
         set heading heading + 90]
       [
         set heading heading - 90]]
-    move-one heading]
+    move-one 0 heading]
 end
 
-to assignBlock
-  let holeQueue sort-on [value] holes
-  let tileQueue sort-on [time-to-live] tiles
-  let agentQueue sort team1s
+to team1smove
+  let holeQueue reverse (sort-on [value] holes)
+  let bestHoleValue 0
+  let bestHole nobody
+  let bestTile  (min-one-of tiles [distance myself])
 
-  if (any? holes) and (any? tiles) and (any? team1s)
-  [
-    foreach (holeQueue)
+  if (any? holes) and (any? tiles) and (any? team1s) and (bestTile != nobody) ;and ( self =  min-one-of team1s [distance bestTile])
     [
-      this-hole ->
-      if (empty? tileQueue or empty? agentQueue) [stop]
-      let closest-tile item 0 tileQueue
-      foreach (tileQueue)
-        [
-          this-tile ->
-          if([distance this-hole] of closest-tile > [distance this-hole] of this-tile)
-          [
-            set closest-tile this-tile
-          ]
-
-      ]
-      let closest-agent item 0 agentQueue
-      foreach (agentQueue)
-        [
-          this-agent ->
-          if([distance closest-tile] of closest-agent > [distance closest-tile] of this-agent)
-          [
-            set closest-agent this-agent
-          ]
-
-      ]
-
-      let total-dist ([distance this-hole] of closest-tile + [distance closest-tile] of closest-agent )
-      if ([time-to-live] of this-hole > total-dist
-        and [time-to-live] of closest-tile > total-dist)
+      foreach (holeQueue)
       [
-        ;;assign bot heading and direction
-        set tileQueue remove closest-tile tileQueue
-        set agentQueue remove closest-agent agentQueue
+        thisHole ->
+        let valueOfHole (([value] of thisHole) / ( [distance bestTile] of thisHole))
+        if (valueOfHole > bestHoleValue)
+        [
+          set bestHoleValue valueOfHole
+          set bestHole thisHole
+        ]
       ]
-    ]
-  ]
-;  show holeQueue
-;  show tileQueue
-;  show agentQueue
 
+
+      if (bestTile != nobody)[
+        ifelse (bestHole != nobody)[
+          ask bestTile [set-robot-destination myself bestHole]
+          if (distancexy destination-x destination-y < 0.1) [ ;(xcor = destination-x and ycor = destination-y)[
+                                                              ;Im already at the desired location, so push the tile
+
+            set heading rectify-heading towards bestTile
+            move-one heading 0
+            stop]]
+        [;there are no holes in the field, this typically only happens at the beginning of the run.
+          set destination-x [xcor] of bestTile
+          set destination-y [ycor] of bestTile]
+
+        ;I am not next to the tile, so set my heading towards the best position next to it.
+        set heading rectify-heading towardsxy destination-x destination-y
+
+        ;If my move will cause a tile to move then change direction by +- 90.
+        ;This will, hopefully, allow me to move around the target to push it back.
+        if (any? tiles-at dx dy)[
+          ifelse (random-float 1.0 < .5)[
+            set heading heading + 90]
+          [
+            set heading heading - 90]]
+        move-one heading 0]
+    ]
 end
+
+;to assignBlock
+;  let holeQueue reverse (sort-on [value] holes)
+;  let tileQueue sort-on [time-to-live] tiles
+;  let agentQueue sort team1s
+;
+;  if (any? holes) and (any? tiles) and (any? team1s)
+;  [
+;    foreach (holeQueue)
+;    [
+;      this-hole ->
+;      if ((empty? tileQueue) or (empty? agentQueue) or (item 0 tileQueue = nobody) or (item 0 agentQueue = nobody)) [stop]
+;      let closest-tile item 0 tileQueue
+;      foreach (tileQueue)
+;        [
+;          this-tile ->
+;          if([distance this-hole] of closest-tile > [distance this-hole] of this-tile)
+;          [
+;            set closest-tile this-tile
+;          ]
+;
+;      ]
+;      let closest-agent item 0 agentQueue
+;      foreach (agentQueue)
+;        [
+;          this-agent ->
+;          if([distance closest-tile] of closest-agent > [distance closest-tile] of this-agent)
+;          [
+;            set closest-agent this-agent
+;          ]
+;
+;      ]
+;
+;      let total-dist ([distance this-hole] of closest-tile + [distance closest-tile] of closest-agent )
+;      if ([time-to-live] of this-hole > total-dist
+;        and [time-to-live] of closest-tile > total-dist)
+;      [
+;        setAgentDest this-hole closest-tile closest-agent
+;        set tileQueue remove closest-tile tileQueue
+;        set agentQueue remove closest-agent agentQueue
+;      ]
+;    ]
+;  ]
+;;  show holeQueue
+;;  show tileQueue
+;;  show agentQueue
+;
+;end
+;
+;to setAgentDest [this-hole this-tile this-agent]
+;  if (this-tile != nobody)[
+;     ifelse (this-hole != nobody)[
+;      ask this-tile [set-robot-destination myself this-hole]
+;      if (distancexy destination-x destination-y < 0.1) [ ;(xcor = destination-x and ycor = destination-y)[
+;        ;Im already at the desired location, so push the tile
+;
+;        set heading rectify-heading towards this-tile
+;        move-one heading
+;        stop]]
+;    [;there are no holes in the field, this typically only happens at the beginning of the run.
+;      set destination-x [xcor] of this-tile
+;      set destination-y [ycor] of this-tile]
+;
+;    ;I am not next to the tile, so set my heading towards the best position next to it.
+;    set heading rectify-heading towardsxy destination-x destination-y
+;
+;    ;If my move will cause a tile to move then change direction by +- 90.
+;    ;This will, hopefully, allow me to move around the target to push it back.
+;    if (any? tiles-at dx dy)[
+;      ifelse (random-float 1.0 < .5)[
+;        set heading heading + 90]
+;      [
+;        set heading heading - 90]]
+;    move-one heading]
+;end
 @#$#@#$#@
 GRAPHICS-WINDOW
 210
