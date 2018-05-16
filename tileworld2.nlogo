@@ -10,7 +10,7 @@
 ;
 ;Note: fixed up for NetLogo 6.0.1 by Matt Saponaro
 
-breed [team1s team1]
+breed [swarm_squad swarm]
 breed [team2s team2]
 breed [tiles tile]
 breed [holes hole]
@@ -20,10 +20,10 @@ tiles-own [time-to-live team]
 holes-own [time-to-live value]
 
 ;desitnation- the next place I am heading towards
-team1s-own [destination-x destination-y team-move]
+swarm_squad-own [destination-x destination-y team-move]
 team2s-own [destination-x destination-y team-move]
 
-globals [holes-born holes-filled1 holes-filled2 score1 score2 team1-setup team2-setup team1-move team2-move]
+globals [holes-born holes-filled1 holes-filled2 score1 score2 swarm-setup team2-setup swarm-move team2-move]
 
 
 to setup
@@ -31,36 +31,28 @@ to setup
   set-default-shape tiles "box"
   set-default-shape holes "circle"
   ;;remove/replace this in the behavior space
-  set team1-setup [ [] -> matts-setup]
-  set team2-setup [[] -> matts-setup]
-  set team1-move [ []-> team1smove]
+  set swarm-setup [ [] -> ]
+  set team2-setup [[] -> ]
+  set swarm-move [ []-> swarm_squadmove]
   set team2-move [[] -> move]
   ;;replace this in the behavior space
 
-  create-team1s num-robots [
+  create-swarm_squad num-robots [
     setxy random-xcor random-ycor
-    set team-move team1-move
+    set team-move swarm-move
   ]
   create-team2s num-robots [
     setxy random-xcor random-ycor
     set team-move team2-move
   ]
+  ask swarm_squad [ set color white ]
+  ask team2s [ set color red]
   reset-ticks
 
-  run team1-setup
+  run swarm-setup
   run team2-setup
 end
 
-
-to matts-setup
-  ;;insert setup code here
-  ;show "setup: hello world"
-end
-
-to matts-move
-  ;show "move: hello world"
-
-end
 to go
   if ticks >= 500 [ stop ]
   update
@@ -85,7 +77,7 @@ to update
   ask tiles [age]
   ask holes [age]
   no-display
-  let agents (turtle-set team1s team2s)
+  let agents (turtle-set swarm_squad team2s)
   ask agents [run team-move]
 
   display
@@ -145,14 +137,14 @@ end
 to move-one [h depth]
   let oldh heading
   set heading h
-  let pushed-agents (turtles-at dx dy) with [(breed = team2s) or (breed = team1s) or (breed = tiles)]
+  let pushed-agents (turtles-at dx dy) with [(breed = team2s) or (breed = swarm_squad) or (breed = tiles)]
   if (any? pushed-agents) [
     set depth depth + 1
-    if depth > 100 [stop]
+    if depth > 60 [stop]
     ask pushed-agents [move-one h depth]
   ]
   if (breed = tiles and (any? holes-at dx dy))[
-    ifelse [breed = team1s] of min-one-of (turtles with [(breed = team1s) or (breed = team2s)]) [distance myself]
+    ifelse [breed = swarm_squad] of min-one-of (turtles with [(breed = swarm_squad) or (breed = team2s)]) [distance myself]
     [
       set holes-filled1 holes-filled1 + (sum [value] of holes-at dx dy)
     ]
@@ -201,59 +193,59 @@ to move
     move-one 0 heading]
 end
 
-to team1smove
+to swarm_squadmove
   let holeQueue reverse (sort-on [value] holes)
   let bestHoleValue 0
   let bestHole nobody
   let bestTile  (min-one-of tiles [distance myself])
 
-  if (any? holes) and (any? tiles) and (any? team1s) and (bestTile != nobody) ;and ( self =  min-one-of team1s [distance bestTile])
+  if (any? holes) and (any? tiles) and (any? swarm_squad) and (bestTile != nobody)
+  [
+    foreach (holeQueue)
     [
-      foreach (holeQueue)
+      thisHole ->
+      let valueOfHole (([value] of thisHole) / ( [distance bestTile] of thisHole))
+      if (valueOfHole > bestHoleValue)
       [
-        thisHole ->
-        let valueOfHole (([value] of thisHole) / ( [distance bestTile] of thisHole))
-        if (valueOfHole > bestHoleValue)
-        [
-          set bestHoleValue valueOfHole
-          set bestHole thisHole
-        ]
+        set bestHoleValue valueOfHole
+        set bestHole thisHole
       ]
-
-
-      if (bestTile != nobody)[
-        ifelse (bestHole != nobody)[
-          ask bestTile [set-robot-destination myself bestHole]
-          if (distancexy destination-x destination-y < 0.1) [ ;(xcor = destination-x and ycor = destination-y)[
-                                                              ;Im already at the desired location, so push the tile
-
-            set heading rectify-heading towards bestTile
-            move-one heading 0
-            stop]]
-        [;there are no holes in the field, this typically only happens at the beginning of the run.
-          set destination-x [xcor] of bestTile
-          set destination-y [ycor] of bestTile]
-
-        ;I am not next to the tile, so set my heading towards the best position next to it.
-        set heading rectify-heading towardsxy destination-x destination-y
-
-        ;If my move will cause a tile to move then change direction by +- 90.
-        ;This will, hopefully, allow me to move around the target to push it back.
-        if (any? tiles-at dx dy)[
-          ifelse (random-float 1.0 < .5)[
-            set heading heading + 90]
-          [
-            set heading heading - 90]]
-        move-one heading 0]
     ]
+
+    if (bestTile != nobody)[
+      ifelse (bestHole != nobody)[
+        ask bestTile [set-robot-destination myself bestHole]
+        if (distancexy destination-x destination-y < 0.1) [ ;(xcor = destination-x and ycor = destination-y)[
+                                                            ;Im already at the desired location, so push the tile
+
+          set heading rectify-heading towards bestTile
+          move-one heading 0
+          stop]]
+      [;there are no holes in the field, this typically only happens at the beginning of the run.
+        set destination-x [xcor] of bestTile
+        set destination-y [ycor] of bestTile]
+
+      ;I am not next to the tile, so set my heading towards the best position next to it.
+      set heading rectify-heading towardsxy destination-x destination-y
+
+      ;If my move will cause a tile to move then change direction by +- 90.
+      ;This will, hopefully, allow me to move around the target to push it back.
+      if (any? tiles-at dx dy)[
+        ifelse (random-float 1.0 < .5)[
+          set heading heading + 90]
+        [
+          set heading heading - 90]]
+      move-one heading 0]
+  ]
+
 end
 
 ;to assignBlock
 ;  let holeQueue reverse (sort-on [value] holes)
 ;  let tileQueue sort-on [time-to-live] tiles
-;  let agentQueue sort team1s
+;  let agentQueue sort swarm_squad
 ;
-;  if (any? holes) and (any? tiles) and (any? team1s)
+;  if (any? holes) and (any? tiles) and (any? swarm_squad)
 ;  [
 ;    foreach (holeQueue)
 ;    [
@@ -359,7 +351,7 @@ num-robots
 num-robots
 0
 50
-39.0
+50.0
 1
 1
 NIL
@@ -374,7 +366,7 @@ tile-birth-prob
 tile-birth-prob
 0
 1
-0.21
+0.53
 .01
 1
 NIL
@@ -404,7 +396,7 @@ hole-birth-prob
 hole-birth-prob
 0
 1
-0.21
+0.52
 .01
 1
 NIL
@@ -419,7 +411,7 @@ hole-lifetime
 hole-lifetime
 0
 100
-50.0
+51.0
 1
 1
 NIL
@@ -479,10 +471,10 @@ PENS
 "pen-1" 1.0 0 -7500403 true "" "plot score2"
 
 BUTTON
-58
-255
-121
-288
+60
+253
+123
+286
 NIL
 go
 T
@@ -859,7 +851,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.0.3
+NetLogo 6.0.2
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
