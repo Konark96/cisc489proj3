@@ -3,7 +3,11 @@ Our Breed: swarm_squad; individual called swarm
 No setup functions
 
 Our solution determines the closest tile to each agent. Then it determines which hole to take that tile to based off the value of the hole per distance. This results in a solution that ends up creating clusters of agents that take blocks to high value holes. Our program benefits from a high agent to hole/tile ratio. 
+
 We also changed the move-one function to disable infinite looping. 
+
 Since we use the value of the holes, agents end up going to the same holes. This makes agents tend to stick together and all go for the collective closest tile before moving to a hole. As a result we tend to outnumber opponents near blocks and take their points, we have a higher chance of scoring because we have so many near the highest scoring hole. 
+
 Also, there is a tendency that any opposing agents that get near the swarm of agents will have their blocks stolen, and then as a result we will prevent them from getting more points. The swarm also provides a protective barrier for the highest scoring hole since there will be many agents near the hole. 
+
 Overall, we wanted to create a strategy that would focus on the highest scoring hole while also being efficient in getting the blocks and agents to score a lot.
